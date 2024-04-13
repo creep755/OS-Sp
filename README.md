@@ -1,13 +1,6 @@
-# Dirwalk
-dirwalk это рекурсивный ls 
-_____
-## Создает папку build и собирает проект в первый раз
+#OS-SP
+Operation systems and system programming.
 
-<<<<
-make all
->>>>
-_____
-## делает  релиз
-<<<<
-make MODE=release
->>>>
+Made by Mikhailovski Aleksandr, 250501 group, BSUIR.
+
+Use only to laugh :)
