@@ -1,84 +1,77 @@
-#include <errno.h>
-#include <unistd.h>
-#include <stdlib.h>
+#define _DEFAULT_SOURCE
+#define _POSIX_SOURCE
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
-#define MAX_LENGTH 256
-#define ENV_COUNT 11
-#define _GNU_SOURCE
+extern char** environ;  // для переменных окружения
 
-void printStrings(char **strings, size_t rows);
-char **allocateStringArray(size_t rows, size_t columns);
-void populateChildEnvironment(char **childEnv, char *childEnvPath);
+char* find(char* name, char** envir) { //поиск переменной окружения по имени
+    char* result = NULL;
+    for(int i = 0; envir[i]; i++) {
+        if(strncmp(name, envir[i], strlen(name)) == 0) {
+            char* buf = NULL;
+            buf = (char*)malloc(sizeof(char) * strlen(envir[i]));
+            strcpy(buf, envir[i]);
 
-int main(int argc, char *argv[], char *envp[])
-{   
-    //получение переменных для дочернего процесса 
-    pid_t pid = getpid();
-    pid_t ppid = getppid();
-    char *procName = argv[0];
-    char *envPath = argv[1];
+            result = strtok(envir[i], "=");
 
-    //вывод информации про дочерний процесс 
-    printf("Child process name: %s\nPID: %d\nPPID: %d\nEnvironment:\n", procName, pid, ppid);
-
-    char **childEnv = allocateStringArray(ENV_COUNT, MAX_LENGTH); // выделение памяти под массив строк переменных среды 
-    populateChildEnvironment(childEnv, envPath); // заполнение массива строк переменными среды по указанному пути envPath
-    printStrings(childEnv, ENV_COUNT); // вывод строк переменныз окружения 
-
-    sleep(2);
-
-    return 0;
-}
-
-char **allocateStringArray(size_t rows, size_t columns)
-{
-    char **result = calloc(rows, sizeof(char *));
-    if (!result)
-    {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    for (size_t i = 0; i < rows; i++)
-    {
-        result[i] = calloc(columns, sizeof(char));
-        if (!result[i])
-        {
-            perror("Memory allocation failed");
-            exit(EXIT_FAILURE);
+            strcpy(envir[i], buf);
+            free(buf);
+                        //Функция перебирает массив envir и проверяет, начинается ли текущий элемент 
+                           //с указанного name. Если да, функция извлекает значение переменной окружения и возвращает её значение
+            result = strtok(NULL, "\0");
         }
     }
-
     return result;
-}
+ }
 
-void printStrings(char **strings, size_t rows)
-{
-    for (size_t i = 0; i < rows; i++)
-        printf("%s\n", strings[i]);
-}
+//Открывает файл с переменными окружения и выводqт их значения.
+int main(int argc, char** argv, char** env) {
+    FILE* environment_variables;
+    char* envFileName = "ENV_VAR";
+    char* filepath = NULL;
+    char type = argv[1][0];
 
-void populateChildEnvironment(char **childEnv, char *childEnvPath)
-{
-    FILE *file = fopen(childEnvPath, "rt");
-    if (!file)
+    if(argc < 2)
     {
-        perror("Unable to open file");
+        puts("Invalid child args");
         exit(EXIT_FAILURE);
     }
 
-    char tmp[MAX_LENGTH];
-    for (size_t i = 0; fscanf(file, "%s ", tmp) != EOF; i++)
-    {
-        sprintf(childEnv[i], "%s=%s", tmp, getenv(tmp));
-    }
+    puts(argv[0]);
+    printf("%i\n%i\n", (int)getpid(), (int)getppid());
 
-    if (fclose(file) != 0)
-    {
-        perror("Unable to close file");
+    //Getting filepath by type
+    filepath = type == '+' ? getenv(envFileName) : 
+            type == '*' ? find(envFileName, env) :
+            type == '&' ? find(envFileName, environ) : NULL;
+
+    if(filepath == NULL){
+        puts("Getting by type error");
         exit(EXIT_FAILURE);
     }
+
+    environment_variables = fopen(filepath, "r");
+    if(environment_variables != NULL)
+    {
+        //Reading and output variables
+        char str[512];
+        while(EOF != fscanf(environment_variables, "%s\n", str)){
+            if(getenv(str))
+                printf("%s=%s\n", str, getenv(str));
+            else
+                continue;
+        }
+        fclose(environment_variables);
+    }
+    else
+        perror("Environment variables file");
+
+    exit(EXIT_SUCCESS);
+    return 0;
 }

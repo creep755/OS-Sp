@@ -47,7 +47,7 @@ void view_list_from_dir(const char *dirname, enum FileTypes types) {
     }
   }
   closedir(dir);
-}
+}\\
 
 int compare(const void *first, const void *second) {
   return strcoll(first, second);

@@ -1,13 +1,17 @@
-CC = gcc
-CFLAGS = -W -Wall -Wno-unused-parameter -Wno-unused-variable -std=c11 -pedantic
+CC=gcc
+CFLAGS=-D_POSIX_C_SOURCE=200809L -W -Wall -Wno-unused-parameter -Wno-unused-variable -std=c11 -pedantic
 
-all: parent child
+.PHONY: clean
+
+export CHILD_PATH=./child
+
+all: parent child run
 
 parent: parent.c
-	$(CC) $(CFLAGS) parent.c -o parent
-
+	$(CC) $(CFLAGS) -o parent parent.c
+    
 child: child.c
-	$(CC) $(CFLAGS) child.c -o child
+	$(CC) $(CFLAGS) -o child child.c 
 
-clean:
-	rm -f parent child
+run: parent.c
+	./parent text.txt  

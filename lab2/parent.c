@@ -1,159 +1,166 @@
-#include <errno.h>
-#include <unistd.h>
-#include <stdlib.h>
+#define _DEFAULT_SOURCE
+#include <locale.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
+#include <unistd.h>
 
-#define MAX_LENGTH 256
-#define CHILD_NAME_LENGTH 9
-#define ENV_COUNT 11
-#define _GNU_SOURCE
+extern char** environ;
 
-extern char **environ;
+ void init_child(char* child_path, char type) { // инициализация нового дочернего процесса
+    static int child_counter = 0;               // счётчик процессов
+    char* child_argv[3] = {(char*)0};
 
-void sortStrings(char ***strings, size_t rows);
-void printStrings(char **strings, size_t rows);
-char *findEnv(char **env, char *key, size_t rows);
-
-int main(int argc, char *argv[], char *envp[])
-{
-    if (argc < 2)
-    {
-        fprintf(stderr, "Error! File is not provided\n");
-        exit(EXIT_FAILURE);
+    if(child_path == NULL) {
+        puts("Child's path is empty.");
+        return;
     }
-    //подсчет и сортировка переменных окружения 
-    size_t sizeOfEnv = 0;
-    while (environ[sizeOfEnv])
-        sizeOfEnv++;
 
-    sortStrings(&environ, sizeOfEnv);
-    printStrings(environ, sizeOfEnv);
+    if(child_counter > 99) {
+        puts("Too many child streams.");
+        return;
+    }
+    
+    pid_t pid;
+    switch (pid = fork()) {      // создание нового дочернего процесса
 
-    char *childEnvPath = argv[1];
-    size_t childIndex = 0;
+        case -1:
+            perror("Fork");
+            exit(EXIT_FAILURE);
+        break;
 
-    while (1)
-    {
-        setenv("LC_COLLATE", "C", 1);
-        printf("Input char: + * & q.\n>");
-        rewind(stdin);
-        //выбор спосооба получения адреса дочернего процесса 
-        char opt;
-        while (1)
-        {
-            scanf("%c", &opt);
-            if (opt == '+' || opt == '*' || opt == '&' || opt == 'q')
-            {
-                break;
+        case 0:
+            child_argv[0] = (char*)malloc(10 * sizeof(char));             // В дочернем процессе функция выделяет память 
+                                                                               //для аргументов командной строки и устанавливает 
+                                                                               //их в имя дочернего процесса и указанный тип
+            child_argv[1] = (char*)malloc(1 * sizeof(char));
+
+            if(child_counter < 10) {
+                sprintf(child_argv[0], "child_0%d", child_counter);
+            } else {
+                sprintf(child_argv[0], "child_%d", child_counter);
+            }
+            sprintf(child_argv[1], "%c", type);
+
+        
+            if (execve(child_path, child_argv, environ) == -1) {   //для замены образа дочернего процесса 
+                                                                                //указанным исполняемым файлом
+                perror("Execve");                                              //+ обработка ошибки
+                exit(1);
+            }
+            break;
+
+        default:
+            child_counter++;
+            break;
+    }
+    return;
+ }
+
+ char* find(char* name, char** envir) {                          //Функция find ищет определенную переменную 
+    char* result = NULL;                                         //окружения в массиве environ и возвращает 
+    for(int i = 0; envir[i]; i++) {                              //ее значение. Она принимает два параметра: 
+                                                                 //name (имя переменной окружения для поиска) и
+        if(strncmp(name, envir[i], strlen(name)) == 0) { // envir (массив переменных окружения)
+            char* buf = NULL;
+            buf = (char*)malloc(sizeof(char) * strlen(envir[i]));
+            strcpy(buf, envir[i]);
+
+            result = strtok(envir[i], "=");
+
+            strcpy(envir[i], buf);
+            free(buf);                     //Функция перебирает массив envir и проверяет, начинается ли текущий элемент 
+                           //с указанного name. Если да, функция извлекает значение переменной окружения и возвращает её значение
+            result = strtok(NULL, "\0");
+        }
+    }
+    return result;
+ }
+
+ void sorting(char** environ) {              //сортирует массив environ в порядке возрастания на основе правил сравнения локали
+    for(int i = 0; environ[i + 1]; i++) {
+        for(int j = 0; environ[j + 1]; j++) {
+            if(strcoll(environ[j], environ[j + 1]) > 0) { //для сравнения соседних элементов в массиве environ
+                char* buf = environ[j + 1];
+                environ[j + 1] = environ[j];
+                environ[j] = buf;
             }
         }
+    }
+    return;
+ }
 
-        //создание переменной, хранящей имя дочернего процесса
-        char childName[CHILD_NAME_LENGTH];
-        snprintf(childName, CHILD_NAME_LENGTH, "%s%02d", "child_", (int)childIndex);
-        //массив для передачи агрументов при создании дочернего процесса 
-        char *childArgs[] = {childName, childEnvPath, NULL};
-        int statusChild = 0;
+int main(int argc, char** argv, char** envir) {   //устанавливает переменную окружения "ENV_VAR"
+    if (argc < 2) {
+        puts("Environment file path empty");
+        exit(EXIT_FAILURE);
+    }
+    char childPathName[] = "CHILD_PATH";
+    char *path = NULL,
+         *environPath = NULL,
+         *envirPath = NULL;
+    setlocale(LC_COLLATE, "C");
+    setenv("ENV_VAR", argv[1], 1);
+    
+    sorting(environ);
+    for(int i = 0; environ[i]; i++) {
+        puts(environ[i]);
+    }
+    // для хранения переменных окружения
+    path = getenv(childPathName);
+    environPath = find(childPathName, environ);
+    envirPath = find(childPathName, envir);
 
-        pid_t pid; // идентификатор процесса 
-        switch (opt)
-        {
-            case '+': // получение пути к дочернему процессу через функцию getenv()
-                pid = fork();
-                if (pid == -1)
-                {
-                    printf("Error! Error occurred, error code - %d\n", errno);
-                    exit(errno);
-                }
-                if (pid == 0)
-                {
-                    char *CHILD_PATH = getenv("CHILD_PATH"); // путь к исполняемому файлу, который запущен в дочернем процессе 
-                    printf("%s\n", CHILD_PATH);
-                    printf("Child process created. Please, wait...\n");
-                    execve(CHILD_PATH, childArgs, environ); // замена текущего процесса на новый с аргументами и переменными окружения 
-                }
-                wait(&statusChild); // ожидание завершения дочернего процесса, сохранение статуса завершения 
+    while (1) {
+        switch (getchar()) {
+            case '+':
+                init_child(path, '+'); //возвращает значение переменной окружения "CHILD_PATH" и сохраняет его 
+                //в переменную path
                 break;
-
-            case '*':   // получение пути к дочернему процессу путем сканирования массива параметров среды, переданного в main
-                pid = fork();
-                if (pid == -1)
-                {
-                    printf("Error! Error occurred, error code - %d\n", errno);
-                    exit(errno);
-                }
-                if (pid == 0)
-                {
-                    char *CHILD_PATH = findEnv(envp, "CHILD_PATH", sizeOfEnv); // поиск значения переменной окружения с именем ChildPath в массиве envp
-                    printf("Child process created. Please, wait...\n");
-                    execve(CHILD_PATH, childArgs, environ); // замена текущего процесса на новый с аргументами и переменными окружения
-                }
-                wait(&statusChild); // ожидание завершения дочернего процесса, сохренение статуса завершения
+//ищет значение переменной окружения "CHILD_PATH" в массиве environ и сохраняет его в переменную environPath.
+            case '*':
+                init_child(envirPath, '*');
                 break;
-
-            case '&': // получение пути к дочернему процессу путем сканирования массива параметров среды, указанной во вешней переменной, установленной при запуске
-                pid = fork();
-                if (pid == -1)
-                {
-                    printf("Error! Error occurred, error code - %d\n", errno);
-                    exit(errno);
-                }
-                if (pid == 0)
-                {
-                    char *CHILD_PATH = findEnv(environ, "CHILD_PATH", sizeOfEnv); // поиск значения переменной окружения с именем ChildPath в массиве environ
-                    printf("Child process created. Please, wait...\n");
-                    execve(CHILD_PATH, childArgs, environ); // замена текущего процесса на новый с аргументами и переменными окружения
-                }
-                wait(&statusChild); // ожидание завершения дочернего процесса, сохренение статуса завершения
+//оторая ищет значение переменной окружения "CHILD_PATH" в массиве envir (который, вероятно, является копией environ) и сохраняет его
+//               в переменную envirPath
+            case '&':
+                init_child(environPath, '&');
                 break;
 
             case 'q':
-                exit(EXIT_SUCCESS);
+                return 0;
+                break;
 
             default:
                 break;
         }
-
-        childIndex++;
-        if (childIndex > 99)
-            childIndex = 0;
     }
+
+    return 0;
 }
 
-void printStrings(char **strings, size_t rows)
-{
-    for (size_t i = 0; i < rows; i++)
-        fprintf(stdout, "%s\n", strings[i]);
-}
 
-void swap(char **s1, char **s2)
-{
-    char *tmp = *s1;
-    *s1 = *s2;
-    *s2 = tmp;
-}
 
-void sortStrings(char ***strings, size_t rows)
-{
-    for (size_t i = 0; i < rows - 1; i++)
-    {
-        for (size_t j = 0; j < rows - i - 1; j++)
-        {
-            if (strcoll((*strings)[j], (*strings)[j + 1]) > 0)
-                swap(&((*strings)[j]), &((*strings)[j + 1]));
-        }
-    }
-}
+/*  fork():
 
-char *findEnv(char **env, char *key, size_t rows)
-{
-    char *result = calloc(MAX_LENGTH, sizeof(char));
-    for (size_t i = 0; i < rows; i++)
-    {
-        if (strstr(env[i], key))
-            strncpy(result, env[i] + strlen(key) + 1, MAX_LENGTH);
-    }
-    return result;
-}
+    Создает новый дочерний процесс, который является точной копией вызывающего (родительского) процесса.
+    В родительском процессе fork() возвращает идентификатор дочернего процесса (PID).
+    В дочернем процессе fork() возвращает 0.
+    Это позволяет отличить родительский и дочерний процессы в дальнейшем коде.
+
+    getenv():
+
+    Позволяет получить значение переменной окружения по ее имени.
+    Переменные окружения - это именованные объекты, содержащие текстовую информацию, доступную всем запускаемым программам.
+    Они используются для хранения параметров, настроек, ключей и другой информации.
+
+        execve():
+        Заменяет образ текущего процесса на новый, указанный в аргументах.
+        Принимает путь к исполняемому файлу, аргументы командной строки и массив переменных окружения.
+        Позволяет запустить другую программу, сохраняя контекст текущего процесса (открытые файлы, сигналы и т.д.).
+    getpid() и getppid():
+        getpid() возвращает идентификатор (PID) текущего процесса.
+        getppid() возвращает идентификатор (PID) родительского процесса текущего процесса.
+        Эти функции позволяют процессам получать информацию о своем окружении и иерархии.
+
+*/
